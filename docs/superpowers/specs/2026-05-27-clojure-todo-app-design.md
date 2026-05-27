@@ -65,8 +65,13 @@ clojure-todo-app/
 | GET | `/oauth/authorize` | `oauth/authorize-handler` | Validates client, redirects to login |
 | POST | `/oauth/token` | `oauth/token-handler` | Exchanges code or refresh token for tokens |
 | POST | `/oauth/revoke` | `oauth/revoke-handler` | Revokes a refresh token (logout) |
-| GET | `/oauth/userinfo` | `oauth/userinfo-handler` | Returns user profile (requires Bearer token) |
 | GET | `/.well-known/oauth-authorization-server` | `oauth/metadata-handler` | OAuth server metadata |
+
+### OAuth endpoint requiring Bearer token
+
+| Method | Path | Handler | Notes |
+|--------|------|---------|-------|
+| GET | `/oauth/userinfo` | `oauth/userinfo-handler` | Returns user profile — requires `Authorization: Bearer <access_token>` |
 
 ### Protected routes (Bearer token required)
 
@@ -169,7 +174,7 @@ GET /oauth/authorize
 ```
 
 ### Step 2 — Clojure validates and serves login page
-Clojure validates `client_id` and `redirect_uri`, stores `code_challenge` in session, and serves the server-rendered HTML login page at `GET /auth/login`.
+Clojure validates `client_id` and `redirect_uri`, then persists the full authorization request parameters (`client_id`, `redirect_uri`, `code_challenge`, `state`) in a short-lived server-side session (Ring session, keyed by a nonce cookie). It then redirects the browser to `GET /auth/login` — the server-rendered login page — carrying the nonce so the login handler can retrieve the parameters after the user submits credentials.
 
 ### Step 3 — User submits credentials
 `POST /auth/login` receives `{ email, password }`. Clojure verifies the password with bcrypt, generates a single-use auth code, stores it in `auth_codes` (with `code_challenge`, `expires_at = now + 10 min`, `used = false`), then redirects to:
