@@ -1,5 +1,6 @@
 (ns api.db.core
   (:require [monger.core :as mg]
+            [monger.collection :as mc]
             [aero.core :refer [read-config]]
             [clojure.java.io :as io]))
 
@@ -14,7 +15,10 @@
     (let [uri              (get-in @config [:db :uri])
           {:keys [conn db]} (mg/connect-via-uri uri)]
       (reset! connection conn)
-      (reset! database db))))
+      (reset! database db)
+      ;; Ensure unique indexes exist
+      (mc/ensure-index db "users" (array-map :email 1) {:unique true})
+      (mc/ensure-index db "users" (array-map :login 1) {:unique true}))))
 
 (defn disconnect! []
   (when-let [conn @connection]

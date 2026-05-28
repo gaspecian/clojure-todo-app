@@ -7,14 +7,16 @@
             [ring.middleware.session :refer [wrap-session]]
             [aero.core :refer [read-config]]
             [clojure.java.io :as io]
-            [api.db.core :as db])
+            [api.db.core :as db]
+            [api.auth.handlers :as auth])
   (:gen-class))
 
 (def config
   (delay (read-config (io/resource "config.edn"))))
 
 (def routes
-  [["/health" {:get (fn [_] {:status 200 :body {:status "ok"}})}]])
+  [["/health"      {:get (fn [_] {:status 200 :body {:status "ok"}})}]
+   ["/auth/signup" {:post auth/signup-handler}]])
 
 (def app
   (-> (ring/ring-handler

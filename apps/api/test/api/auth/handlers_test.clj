@@ -1,0 +1,50 @@
+(ns api.auth.handlers-test
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [ring.mock.request :as mock]
+            [cheshire.core :as json]
+            [api.core :refer [app]]
+            [api.db.core :as db]
+            [monger.collection :as mc]))
+
+(defn db-fixture [f]
+  (db/connect!)
+  (mc/drop (db/get-db) "users")
+  (mc/ensure-index (db/get-db) "users" (array-map :email 1) {:unique true})
+  (mc/ensure-index (db/get-db) "users" (array-map :login 1) {:unique true})
+  (f)
+  (mc/drop (db/get-db) "users"))
+
+(use-fixtures :each db-fixture)
+
+(defn json-request [method path body]
+  (-> (mock/request method path)
+      (mock/content-type "application/json")
+      (mock/header "accept" "application/json")
+      (mock/body (json/generate-string body))))
+
+(defn parse-body [response]
+  (-> response :body slurp (json/parse-string true)))
+
+(deftest signup-success-test
+  (testing "POST /auth/signup creates a user and returns 201"
+    (let [response (app (json-request :post "/auth/signup"
+                                      {:name "Gabriel" :login "gspecian"
+                                       :email "g@example.com" :password "secret123"}))]
+      (is (= 201 (:status response)))
+      (is (= "gspecian" (:login (parse-body response)))))))
+
+(deftest signup-duplicate-email-test
+  (testing "POST /auth/signup with duplicate email returns 409"
+    (app (json-request :post "/auth/signup"
+                       {:name "Gabriel" :login "gspecian"
+                        :email "g@example.com" :password "secret123"}))
+    (let [response (app (json-request :post "/auth/signup"
+                                      {:name "Other" :login "other"
+                                       :email "g@example.com" :password "pass456"}))]
+      (is (= 409 (:status response))))))
+
+(deftest signup-missing-fields-test
+  (testing "POST /auth/signup missing required fields returns 400"
+    (let [response (app (json-request :post "/auth/signup"
+                                      {:name "Gabriel"}))]
+      (is (= 400 (:status response))))))
