@@ -5,8 +5,8 @@ import { Button } from '@/components/ui/button'
 import { Input }  from '@/components/ui/input'
 import { Label }  from '@/components/ui/label'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { useNavigate, Link } from 'react-router-dom'
 import { useState } from 'react'
+import { useAuth } from '@/contexts/AuthContext'
 
 const schema = z.object({
   name:     z.string().min(1, 'Name is required'),
@@ -18,7 +18,7 @@ const schema = z.object({
 type FormData = z.infer<typeof schema>
 
 export function SignupPage() {
-  const navigate = useNavigate()
+  const { login } = useAuth()
   const [serverError, setServerError] = useState<string | null>(null)
 
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<FormData>({
@@ -28,11 +28,17 @@ export function SignupPage() {
 
   async function onSubmit(data: FormData) {
     setServerError(null)
-    const res = await fetch('http://localhost:3000/auth/signup', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(data),
-    })
+    let res: Response
+    try {
+      res = await fetch('http://localhost:3000/auth/signup', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(data),
+      })
+    } catch {
+      setServerError('Network error. Please check your connection and try again.')
+      return
+    }
     if (res.status === 409) {
       setServerError('Email or username already taken')
       return
@@ -41,7 +47,7 @@ export function SignupPage() {
       setServerError('Signup failed. Please try again.')
       return
     }
-    navigate('/todos')
+    login()
   }
 
   return (
@@ -51,9 +57,13 @@ export function SignupPage() {
           <CardTitle className="text-slate-50">Create your account</CardTitle>
           <CardDescription className="text-slate-400">
             Already have one?{' '}
-            <Link to="/todos" className="text-indigo-400 hover:underline">
+            <button
+              type="button"
+              onClick={login}
+              className="text-indigo-400 hover:underline"
+            >
               Sign in
-            </Link>
+            </button>
           </CardDescription>
         </CardHeader>
         <CardContent>
