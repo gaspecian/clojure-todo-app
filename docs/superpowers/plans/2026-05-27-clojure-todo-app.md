@@ -2276,13 +2276,557 @@ git commit -m "feat: add todos page with CRUD, filtering, and responsive sidebar
 
 ---
 
-### Task 14: End-to-end smoke test + turbo dev
+---
 
-- [ ] **Step 1: Start MongoDB (if not running)**
+## Phase 7 — Docker infrastructure
+
+### Task 14: Docker Compose for local development
+
+**Files:**
+- Create: `docker-compose.yml`
+- Create: `.env.example`
+
+- [ ] **Step 1: Create `docker-compose.yml` at the monorepo root**
+
+```yaml
+services:
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: tododb
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  mongo_data:
+```
+
+- [ ] **Step 2: Create `.env.example` at the monorepo root**
 
 ```bash
-brew services start mongodb-community
+# Clojure API (apps/api)
+PORT=3000
+MONGODB_URI=mongodb://localhost:27017/tododb
+JWT_SECRET=replace-with-a-long-random-string-in-production
+
+# React web (apps/web) — Vite reads VITE_* vars
+VITE_API_URL=http://localhost:3000
 ```
+
+- [ ] **Step 3: Add `.env` to `.gitignore`**
+
+Append to `.gitignore`:
+
+```
+.env
+```
+
+- [ ] **Step 4: Start MongoDB with Docker Compose and verify**
+
+```bash
+docker compose up -d mongodb
+docker compose ps
+```
+
+Expected: `mongodb` service is `running (healthy)`.
+
+```bash
+docker compose exec mongodb mongosh --eval "db.adminCommand('ping')"
+```
+
+Expected: `{ ok: 1 }`.
+
+- [ ] **Step 5: Update `turbo.json` to document the dev prerequisite**
+
+Add a comment-style `README` note at the top of `turbo.json` (Turborepo doesn't support comments in JSON, so add an explanatory key that will be ignored):
+
+No code change needed — just update the root `README` in the next commit with setup instructions.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add docker-compose.yml .env.example .gitignore
+git commit -m "feat: add Docker Compose for local MongoDB"
+```
+
+---
+
+### Task 15: Clojure API Dockerfile
+
+**Files:**
+- Modify: `apps/api/deps.edn`
+- Create: `apps/api/build.clj`
+- Create: `apps/api/Dockerfile`
+
+- [ ] **Step 1: Add `tools.build` and linting aliases to `apps/api/deps.edn`**
+
+Add the following aliases to the existing `deps.edn`:
+
+```clojure
+:build {:deps    {io.github.clojure/tools.build {:git/tag "v0.10.5"
+                                                  :git/sha "2a21b7a"}}
+        :ns-default build}
+
+:clj-kondo {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2025.01.16"}}
+            :main-opts  ["-m" "clj-kondo.main"]}
+
+:nvd {:extra-deps {nvd-clojure/nvd-clojure {:mvn/version "4.1.0"}}
+      :main-opts  ["-m" "nvd.task"]}
+```
+
+Full updated `deps.edn`:
+
+```clojure
+{:paths ["src" "resources"]
+ :deps  {org.clojure/clojure         {:mvn/version "1.12.0"}
+         metosin/reitit               {:mvn/version "0.10.1"}
+         ring/ring-core               {:mvn/version "1.15.4"}
+         ring/ring-jetty-adapter      {:mvn/version "1.15.4"}
+         buddy/buddy-hashers          {:mvn/version "2.0.167"}
+         buddy/buddy-sign             {:mvn/version "3.6.1-359"}
+         com.novemberain/monger       {:mvn/version "3.6.0"}
+         metosin/muuntaja             {:mvn/version "0.6.11"}
+         ring-cors/ring-cors          {:mvn/version "0.1.13"}
+         aero                         {:mvn/version "1.1.6"}}
+ :aliases
+ {:run       {:main-opts ["-m" "api.core"]}
+  :test      {:extra-paths ["test"]
+              :extra-deps  {io.github.cognitect-labs/test-runner
+                            {:git/tag "v0.5.1" :git/sha "dfb30dd"}
+                            ring/ring-mock    {:mvn/version "1.0.0"}
+                            cheshire/cheshire {:mvn/version "5.13.0"}}
+              :main-opts   ["-m" "cognitect.test-runner" "-d" "test"]}
+  :build     {:deps    {io.github.clojure/tools.build {:git/tag "v0.10.5"
+                                                        :git/sha "2a21b7a"}}
+              :ns-default build}
+  :clj-kondo {:extra-deps {clj-kondo/clj-kondo {:mvn/version "2025.01.16"}}
+              :main-opts  ["-m" "clj-kondo.main"]}
+  :nvd       {:extra-deps {nvd-clojure/nvd-clojure {:mvn/version "4.1.0"}}
+              :main-opts  ["-m" "nvd.task"]}}}
+```
+
+- [ ] **Step 2: Create `apps/api/build.clj`**
+
+```clojure
+(ns build
+  (:require [clojure.tools.build.api :as b]))
+
+(def class-dir "target/classes")
+(def uber-file "target/todo-api.jar")
+
+(defn clean [_]
+  (b/delete {:path "target"}))
+
+(defn uber [_]
+  (clean nil)
+  (let [basis (b/create-basis {:project "deps.edn"})]
+    (b/copy-dir {:src-dirs   ["src" "resources"]
+                 :target-dir class-dir})
+    (b/compile-clj {:basis     basis
+                    :src-dirs  ["src"]
+                    :class-dir class-dir})
+    (b/uber {:class-dir class-dir
+             :uber-file uber-file
+             :basis     basis
+             :main      'api.core})))
+```
+
+- [ ] **Step 3: Verify the uberjar builds locally**
+
+```bash
+cd apps/api && clj -T:build uber
+```
+
+Expected: `target/todo-api.jar` created. Verify it runs:
+
+```bash
+java -jar apps/api/target/todo-api.jar
+```
+
+Expected: `Server running on port 3000` (MongoDB must be running via Docker Compose).
+
+Stop with Ctrl+C.
+
+- [ ] **Step 4: Create `apps/api/Dockerfile`**
+
+```dockerfile
+# ---- Build stage ----
+FROM clojure:temurin-21-tools-deps AS builder
+WORKDIR /app
+
+# Cache deps before copying source
+COPY deps.edn build.clj ./
+RUN clj -P
+
+COPY src src
+COPY resources resources
+RUN clj -T:build uber
+
+# ---- Run stage ----
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY --from=builder /app/target/todo-api.jar app.jar
+EXPOSE 3000
+ENTRYPOINT ["java", "-jar", "app.jar"]
+```
+
+- [ ] **Step 5: Build and verify the Docker image**
+
+```bash
+docker build -t todo-api apps/api
+docker run --rm -e MONGODB_URI=mongodb://host.docker.internal:27017/tododb todo-api
+```
+
+Expected: `Server running on port 3000`. Stop with Ctrl+C.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/api/deps.edn apps/api/build.clj apps/api/Dockerfile
+git commit -m "feat: add Clojure API Dockerfile and tools.build uberjar"
+```
+
+---
+
+### Task 16: React web Dockerfile
+
+**Files:**
+- Create: `apps/web/nginx.conf`
+- Create: `apps/web/Dockerfile`
+
+The web build context must be the **monorepo root** because pnpm workspaces need `pnpm-lock.yaml` and `pnpm-workspace.yaml`.
+
+- [ ] **Step 1: Create `apps/web/nginx.conf`**
+
+```nginx
+server {
+    listen 80;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # React Router — all non-asset routes serve index.html
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Cache static assets
+    location ~* \.(js|css|png|jpg|svg|ico|woff2?)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+}
+```
+
+- [ ] **Step 2: Create `apps/web/Dockerfile`**
+
+```dockerfile
+# ---- Build stage ----
+FROM node:22-alpine AS builder
+RUN npm install -g pnpm@10
+WORKDIR /app
+
+# Copy workspace manifests first for layer caching
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/web/package.json apps/web/
+
+RUN pnpm install --frozen-lockfile
+
+COPY apps/web apps/web
+RUN pnpm --filter @todo/web build
+
+# ---- Serve stage ----
+FROM nginx:1.27-alpine
+COPY --from=builder /app/apps/web/dist /usr/share/nginx/html
+COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+- [ ] **Step 3: Build and verify the Docker image**
+
+Build from the **monorepo root**:
+
+```bash
+docker build -t todo-web -f apps/web/Dockerfile .
+docker run --rm -p 8080:80 todo-web
+```
+
+Open `http://localhost:8080` — React app should load. Stop with Ctrl+C.
+
+- [ ] **Step 4: Add both services to `docker-compose.yml` for production-like runs**
+
+Update `docker-compose.yml`:
+
+```yaml
+services:
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: tododb
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: apps/api
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      MONGODB_URI: mongodb://mongodb:27017/tododb
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-do-not-use-in-production}
+      PORT: "3000"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    profiles: ["prod"]
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      - api
+    profiles: ["prod"]
+
+volumes:
+  mongo_data:
+```
+
+`profiles: ["prod"]` means `docker compose up -d` (no profile) only starts MongoDB. Full stack runs with `docker compose --profile prod up`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add apps/web/nginx.conf apps/web/Dockerfile docker-compose.yml
+git commit -m "feat: add React web Dockerfile with nginx and full docker-compose stack"
+```
+
+---
+
+## Phase 8 — CI pipelines
+
+### Task 17: Web linting setup
+
+**Files:**
+- Modify: `apps/web/package.json`
+- Verify: `apps/web/eslint.config.js` (Vite generates this)
+
+- [ ] **Step 1: Add `typecheck` and `lint` scripts to `apps/web/package.json`**
+
+Add to the `"scripts"` block (Vite already generates a `lint` script; add `typecheck`):
+
+```json
+{
+  "name": "@todo/web",
+  "version": "0.1.0",
+  "scripts": {
+    "dev":       "vite",
+    "build":     "tsc -b && vite build",
+    "lint":      "eslint .",
+    "typecheck": "tsc --noEmit",
+    "preview":   "vite preview"
+  }
+}
+```
+
+- [ ] **Step 2: Verify ESLint passes**
+
+```bash
+cd apps/web && pnpm lint
+```
+
+Expected: no output (zero errors). Fix any reported issues before continuing.
+
+- [ ] **Step 3: Verify TypeScript type check passes**
+
+```bash
+cd apps/web && pnpm typecheck
+```
+
+Expected: no output (zero type errors). Fix any reported issues before continuing.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add apps/web/package.json
+git commit -m "chore: add typecheck script to web app"
+```
+
+---
+
+### Task 18: GitHub Actions — Clojure API CI
+
+**Files:**
+- Create: `.github/workflows/api-ci.yml`
+
+Triggers on pushes to `main` that touch files under `apps/api/`.
+
+- [ ] **Step 1: Create `.github/workflows/api-ci.yml`**
+
+```bash
+mkdir -p .github/workflows
+```
+
+```yaml
+name: API CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/api/**'
+      - '.github/workflows/api-ci.yml'
+
+jobs:
+  lint-check-test:
+    name: Lint, dependency check, and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Clojure CLI
+        uses: DeLaGuardo/setup-clojure@13
+        with:
+          cli: latest
+
+      - name: Cache Clojure dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository
+            ~/.gitlibs
+            ~/.deps.clj
+          key: clj-${{ hashFiles('apps/api/deps.edn') }}
+          restore-keys: clj-
+
+      - name: Lint with clj-kondo
+        working-directory: apps/api
+        run: clj -M:clj-kondo --lint src
+
+      - name: Dependency vulnerability check (nvd-clojure)
+        working-directory: apps/api
+        run: clj -M:nvd check
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+
+      - name: Start MongoDB
+        uses: supercharge/mongodb-github-action@1.11.0
+        with:
+          mongodb-version: '7.0'
+
+      - name: Run tests
+        working-directory: apps/api
+        run: clj -M:test
+        env:
+          MONGODB_URI: mongodb://localhost:27017/tododb
+          JWT_SECRET: ci-test-secret
+```
+
+> **Note:** `NVD_API_KEY` is optional but required for fast NVD lookups. Add it in GitHub → Repository → Settings → Secrets → Actions. Get a free key at https://nvd.nist.gov/developers/request-an-api-key
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add .github/workflows/api-ci.yml
+git commit -m "ci: add GitHub Actions pipeline for Clojure API (lint, nvd check, tests)"
+```
+
+---
+
+### Task 19: GitHub Actions — React web CI
+
+**Files:**
+- Create: `.github/workflows/web-ci.yml`
+
+Triggers on pushes to `main` that touch files under `apps/web/`.
+
+- [ ] **Step 1: Create `.github/workflows/web-ci.yml`**
+
+```yaml
+name: Web CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/web/**'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/web-ci.yml'
+
+jobs:
+  lint-check:
+    name: Lint, type check, and audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint with ESLint
+        run: pnpm --filter @todo/web lint
+
+      - name: Type check
+        run: pnpm --filter @todo/web typecheck
+
+      - name: Dependency vulnerability audit
+        run: pnpm --filter @todo/web audit --audit-level moderate
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add .github/workflows/web-ci.yml
+git commit -m "ci: add GitHub Actions pipeline for React web (eslint, tsc, pnpm audit)"
+```
+
+---
+
+## Phase 9 — Final smoke test
+
+### Task 20: End-to-end smoke test
+
+- [ ] **Step 1: Start MongoDB with Docker Compose**
+
+```bash
+docker compose up -d mongodb
+docker compose ps
+```
+
+Expected: `mongodb` service is `running (healthy)`.
 
 - [ ] **Step 2: Start both apps with Turborepo**
 
@@ -2290,15 +2834,16 @@ brew services start mongodb-community
 pnpm dev
 ```
 
-Expected: Turborepo starts both `apps/api` (port 3000) and `apps/web` (port 5173) in parallel.
+Expected: Turborepo starts `apps/api` (port 3000) and `apps/web` (port 5173) in parallel. MongoDB is already running in Docker.
 
 - [ ] **Step 3: Smoke test the API**
 
 ```bash
 curl http://localhost:3000/health
+curl http://localhost:3000/.well-known/oauth-authorization-server | jq .
 ```
 
-Expected: `{"status":"ok"}`
+Expected: first returns `{"status":"ok"}`, second returns the OAuth server metadata JSON.
 
 - [ ] **Step 4: Smoke test the full auth flow**
 
@@ -2326,5 +2871,5 @@ Expected: all tests pass, 0 failures, 0 errors.
 
 ```bash
 git add -A
-git commit -m "feat: complete Clojure todo app MVP — OAuth 2.0 + CRUD + responsive React UI"
+git commit -m "feat: complete Clojure todo app MVP — OAuth 2.0 + CRUD + responsive React UI + Docker + CI"
 ```
