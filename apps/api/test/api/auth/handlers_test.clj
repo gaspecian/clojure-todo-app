@@ -9,10 +9,12 @@
 (defn db-fixture [f]
   (db/connect!)
   (mc/drop (db/get-db) "users")
+  (mc/drop (db/get-db) "auth_codes")
   (mc/ensure-index (db/get-db) "users" (array-map :email 1) {:unique true})
   (mc/ensure-index (db/get-db) "users" (array-map :login 1) {:unique true})
   (f)
-  (mc/drop (db/get-db) "users"))
+  (mc/drop (db/get-db) "users")
+  (mc/drop (db/get-db) "auth_codes"))
 
 (use-fixtures :each db-fixture)
 
@@ -48,3 +50,37 @@
     (let [response (app (json-request :post "/auth/signup"
                                       {:name "Gabriel"}))]
       (is (= 400 (:status response))))))
+
+(deftest login-page-test
+  (testing "GET /auth/login returns HTML login page"
+    (let [response (app (mock/request :get "/auth/login"))]
+      (is (= 200 (:status response)))
+      (is (clojure.string/includes?
+           (get-in response [:headers "Content-Type"] "")
+           "text/html")))))
+
+(deftest login-success-test
+  (testing "POST /auth/login with valid credentials returns 302 redirect"
+    (app (json-request :post "/auth/signup"
+                       {:name "Gabriel" :login "gspecian"
+                        :email "g@example.com" :password "secret123"}))
+    (let [session-data {:oauth/client_id      "react-app"
+                        :oauth/redirect_uri   "http://localhost:5173/callback"
+                        :oauth/code_challenge "abc123"
+                        :oauth/state          "xyz"}
+          request      (-> (mock/request :post "/auth/login")
+                           (mock/content-type "application/x-www-form-urlencoded")
+                           (mock/body "email=g%40example.com&password=secret123")
+                           (assoc :session session-data))
+          response     (app request)]
+      (is (= 302 (:status response))))))
+
+(deftest login-wrong-password-test
+  (testing "POST /auth/login with wrong password returns 401"
+    (app (json-request :post "/auth/signup"
+                       {:name "Gabriel" :login "gspecian"
+                        :email "g@example.com" :password "secret123"}))
+    (let [response (app (-> (mock/request :post "/auth/login")
+                            (mock/content-type "application/x-www-form-urlencoded")
+                            (mock/body "email=g%40example.com&password=wrong")))]
+      (is (= 401 (:status response))))))

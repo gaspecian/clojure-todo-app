@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in — TodoApp</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card { background: #1e293b; border-radius: 12px; padding: 32px; width: 100%; max-width: 380px; }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+    p { font-size: 14px; color: #94a3b8; margin-bottom: 24px; }
+    p a { color: #818cf8; text-decoration: none; }
+    label { display: block; font-size: 13px; color: #94a3b8; margin-bottom: 6px; }
+    input { display: block; width: 100%; padding: 10px 12px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; color: #e2e8f0; font-size: 14px; margin-bottom: 16px; }
+    button { width: 100%; padding: 11px; background: #6366f1; color: white; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .error { background: #450a0a; color: #fca5a5; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; display: none; }
+    .error.visible { display: block; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Sign in</h1>
+    <p>Don't have an account? <a href="/signup">Sign up</a></p>
+    <div id="error-box" class="error"></div>
+    <form method="POST" action="/auth/login">
+      <label for="email">Email or username</label>
+      <input id="email" name="email" type="text" autocomplete="username" required autofocus>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button type="submit">Sign in</button>
+    </form>
+  </div>
+</body>
+</html>
