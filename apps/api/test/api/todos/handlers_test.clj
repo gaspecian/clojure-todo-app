@@ -1,0 +1,89 @@
+(ns api.todos.handlers-test
+  (:require [clojure.test :refer [deftest is testing use-fixtures]]
+            [ring.mock.request :as mock]
+            [cheshire.core :as json]
+            [buddy.sign.jwt :as jwt]
+            [api.core :refer [app]]
+            [api.db.core :as db]
+            [monger.collection :as mc])
+  (:import [org.bson.types ObjectId]
+           [java.util Date]))
+
+(def test-user-id (ObjectId.))
+(def jwt-secret "dev-secret-do-not-use-in-production")
+
+(defn make-token [user-id]
+  (jwt/sign {:sub (str user-id)
+             :exp (Date. (+ (System/currentTimeMillis) 900000))}
+            jwt-secret))
+
+(defn auth-request [method path token & [body]]
+  (cond-> (mock/request method path)
+    true  (mock/header "authorization" (str "Bearer " token))
+    true  (mock/header "accept" "application/json")
+    body  (mock/content-type "application/json")
+    body  (mock/body (json/generate-string body))))
+
+(defn parse-body [response]
+  (let [body (:body response)]
+    (cond
+      (string? body) (json/parse-string body true)
+      (bytes? body)  (json/parse-string (String. ^bytes body "UTF-8") true)
+      :else          (json/parse-string (slurp body) true))))
+
+(defn db-fixture [f]
+  (db/connect!)
+  (mc/drop (db/get-db) "todos")
+  (f)
+  (mc/drop (db/get-db) "todos"))
+
+(use-fixtures :each db-fixture)
+
+(deftest list-todos-empty-test
+  (testing "GET /api/todos returns empty list for new user"
+    (let [token    (make-token test-user-id)
+          response (app (auth-request :get "/api/todos" token))]
+      (is (= 200 (:status response)))
+      (is (= [] (:todos (parse-body response)))))))
+
+(deftest create-todo-test
+  (testing "POST /api/todos creates and returns a todo"
+    (let [token    (make-token test-user-id)
+          response (app (auth-request :post "/api/todos" token
+                                      {:title    "Buy milk"
+                                       :body     "2% please"
+                                       :priority "high"
+                                       :tags     ["personal"]}))]
+      (is (= 201 (:status response)))
+      (is (= "Buy milk" (:title (parse-body response))))
+      (is (= false (:completed (parse-body response)))))))
+
+(deftest create-todo-missing-title-test
+  (testing "POST /api/todos without title returns 400"
+    (let [token    (make-token test-user-id)
+          response (app (auth-request :post "/api/todos" token {:body "no title"}))]
+      (is (= 400 (:status response))))))
+
+(deftest update-todo-test
+  (testing "PUT /api/todos/:id updates the todo"
+    (let [token       (make-token test-user-id)
+          create-resp (app (auth-request :post "/api/todos" token {:title "Task"}))
+          todo-id     (:id (parse-body create-resp))
+          update-resp (app (auth-request :put (str "/api/todos/" todo-id) token
+                                         {:title "Task updated" :completed true}))]
+      (is (= 200 (:status update-resp)))
+      (is (= "Task updated" (:title (parse-body update-resp))))
+      (is (= true (:completed (parse-body update-resp)))))))
+
+(deftest delete-todo-test
+  (testing "DELETE /api/todos/:id removes the todo"
+    (let [token       (make-token test-user-id)
+          create-resp (app (auth-request :post "/api/todos" token {:title "Delete me"}))
+          todo-id     (:id (parse-body create-resp))
+          del-resp    (app (auth-request :delete (str "/api/todos/" todo-id) token))]
+      (is (= 204 (:status del-resp))))))
+
+(deftest unauthorized-test
+  (testing "GET /api/todos without token returns 401"
+    (let [response (app (mock/request :get "/api/todos"))]
+      (is (= 401 (:status response))))))
