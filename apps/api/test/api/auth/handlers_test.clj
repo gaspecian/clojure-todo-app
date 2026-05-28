@@ -3,6 +3,7 @@
             [ring.mock.request :as mock]
             [cheshire.core :as json]
             [api.core :refer [app]]
+            [api.auth.handlers :refer [login-handler]]
             [api.db.core :as db]
             [monger.collection :as mc]))
 
@@ -61,19 +62,23 @@
 
 (deftest login-success-test
   (testing "POST /auth/login with valid credentials returns 302 redirect"
+    ;; First create a user
     (app (json-request :post "/auth/signup"
                        {:name "Gabriel" :login "gspecian"
                         :email "g@example.com" :password "secret123"}))
+    ;; Test the handler directly with injected session
     (let [session-data {:oauth/client_id      "react-app"
                         :oauth/redirect_uri   "http://localhost:5173/callback"
                         :oauth/code_challenge "abc123"
                         :oauth/state          "xyz"}
-          request      (-> (mock/request :post "/auth/login")
-                           (mock/content-type "application/x-www-form-urlencoded")
-                           (mock/body "email=g%40example.com&password=secret123")
-                           (assoc :session session-data))
-          response     (app request)]
-      (is (= 302 (:status response))))))
+          request      {:form-params {"email"    "g@example.com"
+                                      "password" "secret123"}
+                        :session     session-data}
+          response     (login-handler request)]
+      (is (= 302 (:status response)))
+      (is (clojure.string/includes?
+           (get-in response [:headers "Location"] "")
+           "http://localhost:5173/callback")))))
 
 (deftest login-wrong-password-test
   (testing "POST /auth/login with wrong password returns 401"
