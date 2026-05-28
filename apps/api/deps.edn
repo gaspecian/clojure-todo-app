@@ -1,0 +1,18 @@
+{:paths ["src" "resources"]
+ :deps  {org.clojure/clojure         {:mvn/version "1.12.0"}
+         metosin/reitit               {:mvn/version "0.10.1"}
+         ring/ring-core               {:mvn/version "1.15.4"}
+         ring/ring-jetty-adapter      {:mvn/version "1.15.4"}
+         buddy/buddy-hashers          {:mvn/version "2.0.167"}
+         buddy/buddy-sign             {:mvn/version "3.6.1-359"}
+         com.novemberain/monger       {:mvn/version "3.6.0"}
+         metosin/muuntaja             {:mvn/version "0.6.11"}
+         ring-cors/ring-cors          {:mvn/version "0.1.13"}
+         aero                         {:mvn/version "1.1.6"}}
+ :aliases
+ {:run  {:main-opts ["-m" "api.core"]}
+  :test {:extra-paths ["test"]
+         :extra-deps  {io.github.cognitect-labs/test-runner
+                       {:git/tag "v0.5.1" :git/sha "dfb30dd"}
+                       ring/ring-mock {:mvn/version "1.0.0"}}
+         :main-opts   ["-m" "cognitect.test-runner" "-d" "test"]}}}
