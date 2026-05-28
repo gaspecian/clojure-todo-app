@@ -4,7 +4,7 @@ import { useTodos, type Todo } from '@/hooks/useTodos'
 import { Button }  from '@/components/ui/button'
 import { Input }   from '@/components/ui/input'
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
-import { Menu, Plus, Check, Trash2 } from 'lucide-react'
+import { Menu, Plus, Check, Pencil, Trash2 } from 'lucide-react'
 
 const PRIORITY_COLORS: Record<string, string> = {
   high:   'bg-red-900 text-red-300',
@@ -12,11 +12,81 @@ const PRIORITY_COLORS: Record<string, string> = {
   low:    'bg-green-900 text-green-300',
 }
 
-function TodoItem({ todo, onToggle, onDelete }: {
+type PriorityLevel = Todo['priority']
+
+const PRIORITY_LEVELS: PriorityLevel[] = ['low', 'medium', 'high']
+
+function PrioritySelect({ value, onChange }: {
+  value:    PriorityLevel
+  onChange: (p: PriorityLevel) => void
+}) {
+  return (
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value as PriorityLevel)}
+      className="bg-slate-800 border border-slate-700 text-slate-100 rounded-md text-sm px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+    >
+      {PRIORITY_LEVELS.map(p => (
+        <option key={p} value={p}>{p[0].toUpperCase() + p.slice(1)}</option>
+      ))}
+    </select>
+  )
+}
+
+function TodoItem({ todo, onToggle, onUpdate, onDelete }: {
   todo:     Todo
   onToggle: (todo: Todo) => void
+  onUpdate: (id: string, fields: { title: string; priority: PriorityLevel; body: string }) => void
   onDelete: (id: string) => void
 }) {
+  const [editing, setEditing]   = useState(false)
+  const [title, setTitle]       = useState(todo.title)
+  const [priority, setPriority] = useState<PriorityLevel>(todo.priority)
+  const [body, setBody]         = useState(todo.body)
+
+  function startEdit() {
+    setTitle(todo.title)
+    setPriority(todo.priority)
+    setBody(todo.body)
+    setEditing(true)
+  }
+
+  function save() {
+    const trimmed = title.trim()
+    if (!trimmed) return
+    onUpdate(todo.id, { title: trimmed, priority, body: body.trim() })
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <div className="bg-slate-800 rounded-lg p-4 space-y-3">
+        <Input
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') setEditing(false) }}
+          autoFocus
+          placeholder="Title"
+          className="bg-slate-950 border-slate-700 text-slate-100 placeholder:text-slate-500"
+        />
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-slate-400">Priority</span>
+          <PrioritySelect value={priority} onChange={setPriority} />
+        </div>
+        <Input
+          value={body}
+          onChange={e => setBody(e.target.value)}
+          placeholder="Notes (optional)"
+          className="bg-slate-950 border-slate-700 text-slate-100 placeholder:text-slate-500"
+        />
+        <div className="flex gap-2">
+          <Button onClick={save} className="bg-indigo-600 hover:bg-indigo-700">Save</Button>
+          <Button onClick={() => setEditing(false)} className="bg-slate-700 hover:bg-slate-600 text-slate-200">Cancel</Button>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={`flex items-start gap-3 bg-slate-800 rounded-lg p-4 ${todo.completed ? 'opacity-50' : ''}`}>
       <button
@@ -43,28 +113,39 @@ function TodoItem({ todo, onToggle, onDelete }: {
           ))}
         </div>
       </div>
-      <button onClick={() => onDelete(todo.id)} className="text-slate-500 hover:text-red-400 flex-shrink-0">
+      <button onClick={startEdit} className="text-slate-500 hover:text-indigo-400 flex-shrink-0" aria-label="Edit todo">
+        <Pencil size={16} />
+      </button>
+      <button onClick={() => onDelete(todo.id)} className="text-slate-500 hover:text-red-400 flex-shrink-0" aria-label="Delete todo">
         <Trash2 size={16} />
       </button>
     </div>
   )
 }
 
-function CreateTodoForm({ onSubmit }: { onSubmit: (title: string) => void }) {
-  const [value, setValue] = useState('')
+function CreateTodoForm({ onSubmit }: { onSubmit: (title: string, priority: PriorityLevel) => void }) {
+  const [value, setValue]       = useState('')
+  const [priority, setPriority] = useState<PriorityLevel>('medium')
+
+  function submit() {
+    const trimmed = value.trim()
+    if (!trimmed) return
+    onSubmit(trimmed, priority)
+    setValue('')
+    setPriority('medium')
+  }
+
   return (
     <div className="flex gap-2">
       <Input
         value={value}
         onChange={e => setValue(e.target.value)}
-        onKeyDown={e => { if (e.key === 'Enter' && value.trim()) { onSubmit(value.trim()); setValue('') } }}
+        onKeyDown={e => { if (e.key === 'Enter') submit() }}
         placeholder="Add a new todo… (press Enter)"
         className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500"
       />
-      <Button
-        onClick={() => { if (value.trim()) { onSubmit(value.trim()); setValue('') } }}
-        className="bg-indigo-600 hover:bg-indigo-700 flex-shrink-0"
-      >
+      <PrioritySelect value={priority} onChange={setPriority} />
+      <Button onClick={submit} className="bg-indigo-600 hover:bg-indigo-700 flex-shrink-0">
         <Plus size={16} />
       </Button>
     </div>
@@ -165,7 +246,7 @@ export function TodosPage() {
               placeholder="Search todos…"
               className="bg-slate-800 border-slate-700 text-slate-100 placeholder:text-slate-500"
             />
-            <CreateTodoForm onSubmit={title => create.mutate({ title })} />
+            <CreateTodoForm onSubmit={(title, priority) => create.mutate({ title, priority })} />
             {isLoading && <p className="text-slate-400 text-sm">Loading…</p>}
             <div className="space-y-2">
               {filtered.map(todo => (
@@ -173,6 +254,7 @@ export function TodosPage() {
                   key={todo.id}
                   todo={todo}
                   onToggle={t => update.mutate({ id: t.id, completed: !t.completed })}
+                  onUpdate={(id, fields) => update.mutate({ id, ...fields })}
                   onDelete={id => remove.mutate(id)}
                 />
               ))}
