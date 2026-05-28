@@ -53,10 +53,11 @@
                                       {:title    "Buy milk"
                                        :body     "2% please"
                                        :priority "high"
-                                       :tags     ["personal"]}))]
+                                       :tags     ["personal"]}))
+          body     (parse-body response)]
       (is (= 201 (:status response)))
-      (is (= "Buy milk" (:title (parse-body response))))
-      (is (= false (:completed (parse-body response)))))))
+      (is (= "Buy milk" (:title body)))
+      (is (= false (:completed body))))))
 
 (deftest create-todo-missing-title-test
   (testing "POST /api/todos without title returns 400"
@@ -70,10 +71,11 @@
           create-resp (app (auth-request :post "/api/todos" token {:title "Task"}))
           todo-id     (:id (parse-body create-resp))
           update-resp (app (auth-request :put (str "/api/todos/" todo-id) token
-                                         {:title "Task updated" :completed true}))]
+                                         {:title "Task updated" :completed true}))
+          update-body (parse-body update-resp)]
       (is (= 200 (:status update-resp)))
-      (is (= "Task updated" (:title (parse-body update-resp))))
-      (is (= true (:completed (parse-body update-resp)))))))
+      (is (= "Task updated" (:title update-body)))
+      (is (= true (:completed update-body))))))
 
 (deftest delete-todo-test
   (testing "DELETE /api/todos/:id removes the todo"

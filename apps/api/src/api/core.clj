@@ -15,7 +15,6 @@
             [api.oauth.handlers :as oauth]
             [api.todos.handlers :as todos]
             [api.middleware.auth :refer [wrap-auth]])
-  (:import [java.io InputStream])
   (:gen-class))
 
 (def config
@@ -41,17 +40,6 @@
       :put    todos/update-handler
       :delete todos/delete-handler}]]])
 
-(defn wrap-body-to-bytes
-  "Converts InputStream response bodies to byte arrays so they can be read
-   multiple times (e.g., in tests using parse-body more than once)."
-  [handler]
-  (fn [request]
-    (let [response (handler request)
-          body     (:body response)]
-      (if (instance? InputStream body)
-        (assoc response :body (.readAllBytes ^InputStream body))
-        response))))
-
 (def app
   (-> (ring/ring-handler
        (ring/router routes
@@ -64,8 +52,7 @@
       (wrap-cors
        :access-control-allow-origin  [#"^http://localhost:5173$"]
        :access-control-allow-methods [:get :post :put :delete :options]
-       :access-control-allow-headers ["Authorization" "Content-Type"])
-      (wrap-body-to-bytes)))
+       :access-control-allow-headers ["Authorization" "Content-Type"])))
 
 (defn -main [& _]
   (db/connect!)
