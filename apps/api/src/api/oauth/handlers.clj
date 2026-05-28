@@ -5,6 +5,7 @@
             [api.db.core :as db]
             [aero.core :refer [read-config]]
             [clojure.java.io :as io]
+            [clojure.string :as str]
             [ring.util.codec :as codec])
   (:import [org.bson.types ObjectId]
            [java.util Date]))
@@ -138,7 +139,7 @@
 
 (defn- verify-access-token [request]
   (let [auth-header (get-in request [:headers "authorization"] "")
-        token       (second (clojure.string/split auth-header #" " 2))]
+        token       (second (str/split auth-header #" " 2))]
     (when (seq token)
       (try
         (jwt/unsign token (jwt-secret))

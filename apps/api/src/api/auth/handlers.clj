@@ -37,9 +37,9 @@
                     :name  name
                     :login login
                     :email email}}
-          (catch com.mongodb.DuplicateKeyException e
+          (catch com.mongodb.DuplicateKeyException _e
             {:status 409 :body {:error "email or login already taken"}})
-          (catch com.mongodb.MongoWriteException e
+          (catch com.mongodb.MongoWriteException _e
             {:status 409 :body {:error "email or login already taken"}}))))))
 
 (defn- html-escape [s]
