@@ -4,7 +4,6 @@
             [muuntaja.core :as m]
             [reitit.ring.middleware.muuntaja :as muuntaja]
             [ring.middleware.cors :refer [wrap-cors]]
-            [ring.middleware.session :refer [wrap-session]]
             [ring.middleware.params :refer [wrap-params]]
             [ring.middleware.cookies :refer [wrap-cookies]]
             [aero.core :refer [read-config]]
@@ -48,15 +47,16 @@
        (ring/create-default-handler))
       (wrap-cookies)
       (wrap-params)
-      (wrap-session)
       (wrap-cors
-       :access-control-allow-origin  [#"^http://localhost:5173$"]
-       :access-control-allow-methods [:get :post :put :delete :options]
-       :access-control-allow-headers ["Authorization" "Content-Type"])))
+       :access-control-allow-origin      [#"^http://localhost:5173$"]
+       :access-control-allow-methods     [:get :post :put :delete :options]
+       :access-control-allow-headers     ["Authorization" "Content-Type"]
+       :access-control-allow-credentials "true")))
 
 (defn -main [& _]
   (db/connect!)
   (seed/seed-clients!)
-  (let [port (get-in @config [:server :port])]
+  (let [raw  (get-in @config [:server :port])
+        port (if (string? raw) (Integer/parseInt raw) raw)]
     (println (str "Server running on port " port))
     (jetty/run-jetty #'app {:port port :join? true})))

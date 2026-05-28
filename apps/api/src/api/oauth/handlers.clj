@@ -4,7 +4,8 @@
             [monger.operators :refer [$set]]
             [api.db.core :as db]
             [aero.core :refer [read-config]]
-            [clojure.java.io :as io])
+            [clojure.java.io :as io]
+            [ring.util.codec :as codec])
   (:import [org.bson.types ObjectId]
            [java.util Date]))
 
@@ -13,13 +14,13 @@
 
 (defn- jwt-secret [] (get-in @config [:jwt :secret]))
 
-(defn- find-client [client-id]
+(defn find-client [client-id]
   (mc/find-one-as-map (db/get-db) "clients" {:client_id client-id}))
 
-(defn- valid-redirect? [client redirect-uri]
+(defn valid-redirect? [client redirect-uri]
   (some #(= % redirect-uri) (:redirect_uris client)))
 
-(defn authorize-handler [{:keys [params session]}]
+(defn authorize-handler [{:keys [params]}]
   (let [client-id     (get params "client_id")
         redirect-uri  (get params "redirect_uri")
         response-type (get params "response_type")
@@ -37,13 +38,14 @@
       {:status 400 :body {:error "unsupported response_type"}}
 
       :else
+      ;; Stateless: carry the (public) OAuth params to the login page via the
+      ;; query string instead of a server session, so the flow survives restarts.
       {:status  302
-       :headers {"Location" "/auth/login"}
-       :session (assoc session
-                       :oauth/client_id      client-id
-                       :oauth/redirect_uri   redirect-uri
-                       :oauth/code_challenge challenge
-                       :oauth/state          state)})))
+       :headers {"Location" (str "/auth/login?"
+                                 (codec/form-encode {:client_id      client-id
+                                                     :redirect_uri   redirect-uri
+                                                     :code_challenge (or challenge "")
+                                                     :state          (or state "")}))}})))
 
 (defn- sha256-base64url [s]
   (let [digest (java.security.MessageDigest/getInstance "SHA-256")
@@ -96,7 +98,7 @@
                       :revoked    false})
           {:status  200
            :headers {"Set-Cookie" (str "refresh_token=" refresh-token
-                                       "; HttpOnly; SameSite=Strict; Path=/oauth/token")}
+                                       "; HttpOnly; SameSite=Strict; Path=/oauth")}
            :body    {:access_token access-token
                      :token_type   "Bearer"
                      :expires_in   900}})))))
@@ -131,7 +133,7 @@
                   (get-in cookies ["refresh_token" :value]))]
     (mc/update (db/get-db) "refresh_tokens" {:token token} {$set {:revoked true}})
     {:status  200
-     :headers {"Set-Cookie" "refresh_token=; HttpOnly; SameSite=Strict; Path=/oauth/token; Max-Age=0"}
+     :headers {"Set-Cookie" "refresh_token=; HttpOnly; SameSite=Strict; Path=/oauth; Max-Age=0"}
      :body    {:revoked true}}))
 
 (defn- verify-access-token [request]

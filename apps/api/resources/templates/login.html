@@ -22,8 +22,12 @@
   <div class="card">
     <h1>Sign in</h1>
     <p>Don't have an account? <a href="http://localhost:5173/signup">Sign up</a></p>
-    <div id="error-box" class="error"></div>
+    <div id="error-box" class="error{{error_class}}">{{error}}</div>
     <form method="POST" action="/auth/login">
+      <input type="hidden" name="client_id" value="{{client_id}}">
+      <input type="hidden" name="redirect_uri" value="{{redirect_uri}}">
+      <input type="hidden" name="code_challenge" value="{{code_challenge}}">
+      <input type="hidden" name="state" value="{{state}}">
       <label for="email">Email or username</label>
       <input id="email" name="email" type="text" autocomplete="username" required autofocus>
       <label for="password">Password</label>

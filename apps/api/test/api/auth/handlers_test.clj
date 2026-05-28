@@ -5,17 +5,20 @@
             [api.core :refer [app]]
             [api.auth.handlers :refer [login-handler]]
             [api.db.core :as db]
-            [monger.collection :as mc]))
+            [monger.collection :as mc])
+  (:import [org.bson.types ObjectId]))
 
 (defn db-fixture [f]
   (db/connect!)
-  (mc/drop (db/get-db) "users")
-  (mc/drop (db/get-db) "auth_codes")
+  (doseq [coll ["users" "auth_codes" "clients"]] (mc/drop (db/get-db) coll))
   (mc/ensure-index (db/get-db) "users" (array-map :email 1) {:unique true})
   (mc/ensure-index (db/get-db) "users" (array-map :login 1) {:unique true})
+  (mc/insert (db/get-db) "clients"
+             {:_id           (ObjectId.)
+              :client_id     "react-app"
+              :redirect_uris ["http://localhost:5173/callback"]})
   (f)
-  (mc/drop (db/get-db) "users")
-  (mc/drop (db/get-db) "auth_codes"))
+  (doseq [coll ["users" "auth_codes" "clients"]] (mc/drop (db/get-db) coll)))
 
 (use-fixtures :each db-fixture)
 
@@ -66,19 +69,32 @@
     (app (json-request :post "/auth/signup"
                        {:name "Gabriel" :login "gspecian"
                         :email "g@example.com" :password "secret123"}))
-    ;; Test the handler directly with injected session
-    (let [session-data {:oauth/client_id      "react-app"
-                        :oauth/redirect_uri   "http://localhost:5173/callback"
-                        :oauth/code_challenge "abc123"
-                        :oauth/state          "xyz"}
-          request      {:form-params {"email"    "g@example.com"
-                                      "password" "secret123"}
-                        :session     session-data}
-          response     (login-handler request)]
+    ;; OAuth params now arrive as form fields (carried from the authorize redirect)
+    (let [request  {:form-params {"email"          "g@example.com"
+                                  "password"       "secret123"
+                                  "client_id"      "react-app"
+                                  "redirect_uri"   "http://localhost:5173/callback"
+                                  "code_challenge" "abc123"
+                                  "state"          "xyz"}}
+          response (login-handler request)]
       (is (= 302 (:status response)))
       (is (clojure.string/includes?
            (get-in response [:headers "Location"] "")
            "http://localhost:5173/callback")))))
+
+(deftest login-rejects-untrusted-redirect-test
+  (testing "POST /auth/login with a redirect_uri not registered for the client is rejected"
+    (app (json-request :post "/auth/signup"
+                       {:name "Gabriel" :login "gspecian"
+                        :email "g@example.com" :password "secret123"}))
+    (let [response (login-handler
+                    {:form-params {"email"          "g@example.com"
+                                   "password"       "secret123"
+                                   "client_id"      "react-app"
+                                   "redirect_uri"   "http://evil.example.com/steal"
+                                   "code_challenge" "abc123"
+                                   "state"          "xyz"}})]
+      (is (= 400 (:status response))))))
 
 (deftest login-wrong-password-test
   (testing "POST /auth/login with wrong password returns 401"
