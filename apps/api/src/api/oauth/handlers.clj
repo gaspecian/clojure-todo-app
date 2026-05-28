@@ -48,7 +48,7 @@
 (defn- sha256-base64url [s]
   (let [digest (java.security.MessageDigest/getInstance "SHA-256")
         bytes  (.digest digest (.getBytes s "UTF-8"))]
-    (.encodeToString (java.util.Base64/getUrlEncoder) bytes)))
+    (.encodeToString (.withoutPadding (java.util.Base64/getUrlEncoder)) bytes)))
 
 (defonce ^:private secure-random (java.security.SecureRandom.))
 

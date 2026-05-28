@@ -13,7 +13,6 @@
             [api.db.seed :as seed]
             [api.auth.handlers :as auth]
             [api.oauth.handlers :as oauth])
-  (:import [java.io InputStream ByteArrayInputStream])
   (:gen-class))
 
 (def config
@@ -30,21 +29,12 @@
    ["/oauth/revoke"                           {:post oauth/revoke-handler}]
    ["/oauth/userinfo"                         {:get oauth/userinfo-handler}]])
 
-(defn- wrap-slurpable-body [handler]
-  (fn [request]
-    (let [response (handler request)
-          body     (:body response)]
-      (if (instance? InputStream body)
-        (assoc response :body (.getBytes (slurp body) "UTF-8"))
-        response))))
-
 (def app
   (-> (ring/ring-handler
        (ring/router routes
                     {:data {:muuntaja   m/instance
                             :middleware [muuntaja/format-middleware]}})
        (ring/create-default-handler))
-      (wrap-slurpable-body)
       (wrap-cookies)
       (wrap-params)
       (wrap-session)

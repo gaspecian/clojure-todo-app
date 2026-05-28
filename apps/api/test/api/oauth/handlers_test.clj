@@ -23,7 +23,11 @@
 (use-fixtures :each db-fixture)
 
 (defn parse-body [response]
-  (-> response :body slurp (json/parse-string true)))
+  (let [body (:body response)]
+    (cond
+      (string? body) (json/parse-string body true)
+      (bytes? body)  (json/parse-string (String. ^bytes body "UTF-8") true)
+      :else          (json/parse-string (slurp body) true))))
 
 (deftest authorize-valid-client-test
   (testing "GET /oauth/authorize with valid client redirects to login"
@@ -53,7 +57,7 @@
           verifier "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
           challenge (let [digest (java.security.MessageDigest/getInstance "SHA-256")
                           bytes  (.digest digest (.getBytes verifier "UTF-8"))]
-                      (.encodeToString (java.util.Base64/getUrlEncoder) bytes))]
+                      (.encodeToString (.withoutPadding (java.util.Base64/getUrlEncoder)) bytes))]
       (mc/insert (db/get-db) "users"
                  {:_id      user-id :name "G" :login "g"
                   :email    "g@example.com"
@@ -76,6 +80,7 @@
                                            :code_verifier verifier
                                            :client_id     "react-app"
                                            :redirect_uri  "http://localhost:5173/callback"}))))]
-        (is (= 200 (:status response)))
-        (is (contains? (parse-body response) :access_token))
-        (is (= "Bearer" (:token_type (parse-body response))))))))
+        (let [body (parse-body response)]
+          (is (= 200 (:status response)))
+          (is (contains? body :access_token))
+          (is (= "Bearer" (:token_type body))))))))
