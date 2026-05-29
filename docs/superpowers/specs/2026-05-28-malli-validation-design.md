@@ -30,13 +30,14 @@ reitit + muuntaja are already wired, and **malli 0.20.1 + reitit-malli 0.10.1 ar
 - Path/query/form-param coercion (todo `:id`, `/oauth/*`, `/auth/login`). The OAuth flow is untouched.
 - Email *format* validation — `email` stays "non-empty string", matching current behavior. (Easy future enhancement.)
 - Any change to the `{"error": "..."}` 400 response contract the web client depends on.
+- `due_date` as a *writable* field. It is dropped from the writable schemas/update path (see §3.4). It was previously settable via `PUT`, but storing a raw JSON string makes `todo->response` call `.toInstant` on a `String` — a latent crash the client never triggers (it doesn't send `due_date`). Deferring it until due-date handling is designed properly removes that dormant bug rather than enshrining it.
 
 ---
 
 ## 3. Components
 
 ### 3.1 `api.schemas` (new namespace)
-Canonical request schemas. Maps are **open** (extra keys ignored, matching current behavior).
+Canonical request schemas. reitit's malli coercion **strips keys not declared in the schema** from the coerced `:parameters :body` (the raw `:body-params` is left untouched). Net behavior matches today — the handlers already build their persisted maps from known keys only — so stripping is harmless and actually cleaner. The one consequence is `due_date`, handled in §3.4.
 
 ```clojure
 (ns api.schemas)
@@ -119,7 +120,7 @@ The three target routes attach schemas (sibling methods stay in their current ba
 ### 3.4 Handlers — trust coerced input
 - `signup-handler` — delete `validate-signup` and its `(if error ...)` branch; read `(get-in request [:parameters :body])`. Keep the duplicate-key → 409 `try/catch` (a DB concern, not coercion).
 - `create-handler` — delete the inline `title is required` check; read the body from `:parameters`. Existing defaults (`(:priority body "medium")`, `(:tags body [])`, etc.) remain.
-- `update-handler` — read the body from `:parameters`; keep the `contains?`-based partial-update logic unchanged.
+- `update-handler` — read the body from `:parameters`; keep the `contains?`-based partial-update logic for `title`/`body`/`completed`/`priority`/`tags`. **Drop the `due_date` branch** — it is no longer in the writable schema, so coercion strips it (see §2 non-goals).
 
 ---
 
