@@ -55,7 +55,7 @@
 
 (defn -main [& _]
   (db/connect!)
-  (seed/seed-clients!)
+  (seed/seed-clients! (db/get-db))
   (let [raw  (get-in @config [:server :port])
         port (if (string? raw) (Integer/parseInt raw) raw)]
     (println (str "Server running on port " port))

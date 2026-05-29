@@ -1,13 +1,12 @@
 (ns api.db.seed
-  (:require [monger.collection :as mc]
-            [api.db.core :as db])
+  (:require [monger.collection :as mc])
   (:import [org.bson.types ObjectId]))
 
-(defn seed-clients! []
+(defn seed-clients! [db]
   (let [coll     "clients"
-        existing (mc/find-one-as-map (db/get-db) coll {:client_id "react-app"})]
+        existing (mc/find-one-as-map db coll {:client_id "react-app"})]
     (when (nil? existing)
-      (mc/insert (db/get-db) coll
+      (mc/insert db coll
                  {:_id           (ObjectId.)
                   :client_id     "react-app"
                   :name          "React Todo App"
