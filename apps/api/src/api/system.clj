@@ -15,7 +15,7 @@
             [api.schemas :as schemas]
             [reitit.coercion.malli]
             [reitit.ring.coercion :as rrc]
-            [api.middleware.coercion :refer [wrap-coercion-errors]]))
+            [api.middleware.errors :as errors]))
 
 (def routes
   [["/health"                                 {:get (fn [_] {:status 200 :body {:status "ok"}})}]
@@ -50,7 +50,7 @@
                     {:data {:muuntaja   m/instance
                             :coercion   reitit.coercion.malli/coercion
                             :middleware [muuntaja/format-middleware
-                                         wrap-coercion-errors
+                                         errors/exception-middleware
                                          rrc/coerce-request-middleware]}})
        (ring/create-default-handler))
       (wrap-deps db config)

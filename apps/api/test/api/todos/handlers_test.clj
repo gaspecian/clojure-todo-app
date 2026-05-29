@@ -112,6 +112,12 @@
           update-resp (app (auth-request :put (str "/api/todos/" todo-id) token {:title ""}))]
       (is (= 400 (:status update-resp))))))
 
+(deftest get-todo-invalid-id-test
+  (testing "GET /api/todos/:id with a malformed id returns 400 (not a 500)"
+    (let [token    (make-token test-user-id)
+          response (app (auth-request :get "/api/todos/not-a-valid-id" token))]
+      (is (= 400 (:status response))))))
+
 (deftest unauthorized-test
   (testing "GET /api/todos without token returns 401"
     (let [response (app (mock/request :get "/api/todos"))]
