@@ -38,11 +38,11 @@ jobs:
 
       - name: Lint with clj-kondo
         working-directory: apps/api
-        run: clj -M:clj-kondo --lint src
+        run: clojure -M:clj-kondo --lint src
 
       - name: Dependency vulnerability check (nvd-clojure)
         working-directory: apps/api
-        run: clj -M:nvd
+        run: clojure -M:nvd
         continue-on-error: true
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
@@ -54,7 +54,7 @@ jobs:
 
       - name: Run tests
         working-directory: apps/api
-        run: clj -M:test
+        run: clojure -M:test
         env:
           MONGODB_URI: mongodb://localhost:27017/tododb
           JWT_SECRET: ci-test-secret
