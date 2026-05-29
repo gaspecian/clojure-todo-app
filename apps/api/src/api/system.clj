@@ -12,6 +12,7 @@
             [api.oauth.handlers :as oauth]
             [api.todos.handlers :as todos]
             [api.middleware.auth :refer [wrap-auth]]
+            [api.schemas :as schemas]
             [reitit.coercion.malli]
             [reitit.ring.coercion :as rrc]
             [api.middleware.coercion :refer [wrap-coercion-errors]]))
@@ -19,7 +20,8 @@
 (def routes
   [["/health"                                 {:get (fn [_] {:status 200 :body {:status "ok"}})}]
    ["/.well-known/oauth-authorization-server" {:get oauth/metadata-handler}]
-   ["/auth/signup"                            {:post auth/signup-handler}]
+   ["/auth/signup"                            {:post {:parameters {:body schemas/Signup}
+                                                      :handler     auth/signup-handler}}]
    ["/auth/login"                             {:get  auth/login-page-handler
                                                :post auth/login-handler}]
    ["/oauth/authorize"                        {:get oauth/authorize-handler}]
