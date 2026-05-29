@@ -3,7 +3,6 @@
             [monger.collection :as mc]
             [clojure.java.io :as io]
             [clojure.string :as str]
-            [api.db.core :as db]
             [api.oauth.handlers :as oauth])
   (:import [org.bson.types ObjectId]
            [java.security SecureRandom]
@@ -18,7 +17,7 @@
     (< (count password) 6) "password must be at least 6 characters"
     :else nil))
 
-(defn signup-handler [{:keys [body-params]}]
+(defn signup-handler [{:keys [body-params db]}]
   (let [error (validate-signup body-params)]
     (if error
       {:status 400 :body {:error error}}
@@ -31,7 +30,7 @@
                     :password   hashed
                     :created_at (java.util.Date.)}]
         (try
-          (mc/insert (db/get-db) "users" user)
+          (mc/insert db "users" user)
           {:status 201
            :body   {:id    (str (:_id user))
                     :name  name
@@ -70,24 +69,24 @@
                             :code_challenge (get params "code_challenge")
                             :state          (get params "state")}))
 
-(defn- find-user-by-email-or-login [db-conn identifier]
-  (or (mc/find-one-as-map db-conn "users" {:email identifier})
-      (mc/find-one-as-map db-conn "users" {:login identifier})))
+(defn- find-user-by-email-or-login [db identifier]
+  (or (mc/find-one-as-map db "users" {:email identifier})
+      (mc/find-one-as-map db "users" {:login identifier})))
 
 (defn- generate-auth-code []
   (let [bytes (byte-array 32)]
     (.nextBytes (SecureRandom.) bytes)
     (.encodeToString (Base64/getUrlEncoder) bytes)))
 
-(defn login-handler [{:keys [form-params]}]
+(defn login-handler [{:keys [form-params db]}]
   (let [identifier   (get form-params "email")
         password     (get form-params "password")
         client-id    (get form-params "client_id")
         redirect-uri (get form-params "redirect_uri")
         challenge    (get form-params "code_challenge")
         state        (get form-params "state")
-        user         (find-user-by-email-or-login (db/get-db) identifier)
-        client       (oauth/find-client client-id)
+        user         (find-user-by-email-or-login db identifier)
+        client       (oauth/find-client db client-id)
         fields       {:client_id      client-id
                       :redirect_uri   redirect-uri
                       :code_challenge challenge
@@ -96,8 +95,6 @@
       (or (nil? user) (not (hashers/check password (:password user))))
       (login-page-response 401 (assoc fields :error "Invalid email or password."))
 
-      ;; Re-validate the (now client-supplied) authorization params so a tampered
-      ;; redirect_uri can't be used to exfiltrate the auth code.
       (or (nil? client) (not (oauth/valid-redirect? client redirect-uri)))
       (login-page-response 400 (assoc fields :error "This sign-in session is invalid or expired. Open the app to start again."))
 
@@ -111,6 +108,6 @@
                        :redirect_uri   redirect-uri
                        :expires_at     (java.util.Date. (+ (System/currentTimeMillis) (* 10 60 1000)))
                        :used           false}]
-        (mc/insert (db/get-db) "auth_codes" auth-code)
+        (mc/insert db "auth_codes" auth-code)
         {:status  302
          :headers {"Location" (str redirect-uri "?code=" code "&state=" state)}}))))

@@ -2,23 +2,25 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [ring.mock.request :as mock]
             [cheshire.core :as json]
-            [api.core :refer [app]]
-            [api.db.core :as db]
+            [api.test-helpers :as helpers]
             [monger.collection :as mc])
   (:import [org.bson.types ObjectId]))
 
+(def system (helpers/make-test-system))
+(def app (:app system))
+(def test-db (:db system))
+
 (defn db-fixture [f]
-  (db/connect!)
   (doseq [coll ["users" "auth_codes" "refresh_tokens" "clients"]]
-    (mc/drop (db/get-db) coll))
-  (mc/insert (db/get-db) "clients"
+    (mc/drop test-db coll))
+  (mc/insert test-db "clients"
              {:_id           (ObjectId.)
               :client_id     "react-app"
               :redirect_uris ["http://localhost:5173/callback"]
               :grant_types   ["authorization_code" "refresh_token"]})
   (f)
   (doseq [coll ["users" "auth_codes" "refresh_tokens" "clients"]]
-    (mc/drop (db/get-db) coll)))
+    (mc/drop test-db coll)))
 
 (use-fixtures :each db-fixture)
 
@@ -58,11 +60,11 @@
           challenge (let [digest (java.security.MessageDigest/getInstance "SHA-256")
                           bytes  (.digest digest (.getBytes verifier "UTF-8"))]
                       (.encodeToString (.withoutPadding (java.util.Base64/getUrlEncoder)) bytes))]
-      (mc/insert (db/get-db) "users"
+      (mc/insert test-db "users"
                  {:_id      user-id :name "G" :login "g"
                   :email    "g@example.com"
                   :password "hash" :created_at (java.util.Date.)})
-      (mc/insert (db/get-db) "auth_codes"
+      (mc/insert test-db "auth_codes"
                  {:_id            (ObjectId.)
                   :code           "testcode123"
                   :client_id      "react-app"

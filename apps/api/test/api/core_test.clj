@@ -1,7 +1,9 @@
 (ns api.core-test
   (:require [clojure.test :refer [deftest is testing]]
             [ring.mock.request :as mock]
-            [api.core :refer [app]]))
+            [api.system :as system]))
+
+(def app (system/make-app {:db nil :config nil}))
 
 (deftest health-endpoint-test
   (testing "GET /health returns 200 OK"

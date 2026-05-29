@@ -3,18 +3,18 @@
             [ring.mock.request :as mock]
             [cheshire.core :as json]
             [buddy.sign.jwt :as jwt]
-            [aero.core :refer [read-config]]
-            [clojure.java.io :as io]
-            [api.core :refer [app]]
-            [api.db.core :as db]
+            [api.test-helpers :as helpers]
             [monger.collection :as mc])
   (:import [org.bson.types ObjectId]
            [java.util Date]))
 
+(def system (helpers/make-test-system))
+(def app (:app system))
+(def test-db (:db system))
+
 (def test-user-id (ObjectId.))
-;; Sign tokens with the same secret the app verifies against (env or default),
-;; so the suite passes whether or not JWT_SECRET is set (e.g. in CI).
-(def jwt-secret (get-in (read-config (io/resource "config.edn")) [:jwt :secret]))
+;; Sign tokens with the same secret the injected app verifies against.
+(def jwt-secret (get-in helpers/test-config [:jwt :secret]))
 
 (defn make-token [user-id]
   (jwt/sign {:sub (str user-id)
@@ -36,10 +36,9 @@
       :else          (json/parse-string (slurp body) true))))
 
 (defn db-fixture [f]
-  (db/connect!)
-  (mc/drop (db/get-db) "todos")
+  (mc/drop test-db "todos")
   (f)
-  (mc/drop (db/get-db) "todos"))
+  (mc/drop test-db "todos"))
 
 (use-fixtures :each db-fixture)
 

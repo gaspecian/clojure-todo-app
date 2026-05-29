@@ -2,32 +2,24 @@
   (:require [buddy.sign.jwt :as jwt]
             [monger.collection :as mc]
             [monger.operators :refer [$set]]
-            [api.db.core :as db]
-            [aero.core :refer [read-config]]
-            [clojure.java.io :as io]
             [clojure.string :as str]
             [ring.util.codec :as codec])
   (:import [org.bson.types ObjectId]
            [java.util Date]))
 
-(def ^:private config
-  (delay (read-config (io/resource "config.edn"))))
-
-(defn- jwt-secret [] (get-in @config [:jwt :secret]))
-
-(defn find-client [client-id]
-  (mc/find-one-as-map (db/get-db) "clients" {:client_id client-id}))
+(defn find-client [db client-id]
+  (mc/find-one-as-map db "clients" {:client_id client-id}))
 
 (defn valid-redirect? [client redirect-uri]
   (some #(= % redirect-uri) (:redirect_uris client)))
 
-(defn authorize-handler [{:keys [params]}]
+(defn authorize-handler [{:keys [params db]}]
   (let [client-id     (get params "client_id")
         redirect-uri  (get params "redirect_uri")
         response-type (get params "response_type")
         challenge     (get params "code_challenge")
         state         (get params "state")
-        client        (find-client client-id)]
+        client        (find-client db client-id)]
     (cond
       (nil? client)
       {:status 400 :body {:error "unknown client_id"}}
@@ -39,8 +31,6 @@
       {:status 400 :body {:error "unsupported response_type"}}
 
       :else
-      ;; Stateless: carry the (public) OAuth params to the login page via the
-      ;; query string instead of a server session, so the flow survives restarts.
       {:status  302
        :headers {"Location" (str "/auth/login?"
                                  (codec/form-encode {:client_id      client-id
@@ -60,8 +50,8 @@
     (.nextBytes secure-random bytes)
     (.encodeToString (java.util.Base64/getUrlEncoder) bytes)))
 
-(defn- exchange-code [{:keys [code code_verifier client_id redirect_uri]}]
-  (let [auth-code (mc/find-one-as-map (db/get-db) "auth_codes" {:code code :used false})]
+(defn- exchange-code [db secret {:keys [code code_verifier client_id redirect_uri]}]
+  (let [auth-code (mc/find-one-as-map db "auth_codes" {:code code :used false})]
     (cond
       (nil? auth-code)
       {:status 400 :body {:error "invalid or used code"}}
@@ -80,17 +70,17 @@
 
       :else
       (do
-        (mc/update (db/get-db) "auth_codes" {:code code} {$set {:used true}})
+        (mc/update db "auth_codes" {:code code} {$set {:used true}})
         (let [user-id       (:user_id auth-code)
-              user          (mc/find-one-as-map (db/get-db) "users" {:_id user-id})
+              user          (mc/find-one-as-map db "users" {:_id user-id})
               now           (System/currentTimeMillis)
               access-token  (jwt/sign {:sub      (str user-id)
                                        :login    (:login user)
                                        :email    (:email user)
                                        :exp      (Date. (+ now (* 15 60 1000)))}
-                                      (jwt-secret))
+                                      secret)
               refresh-token (generate-token)]
-          (mc/insert (db/get-db) "refresh_tokens"
+          (mc/insert db "refresh_tokens"
                      {:_id        (ObjectId.)
                       :token      refresh-token
                       :user_id    user-id
@@ -104,53 +94,54 @@
                      :token_type   "Bearer"
                      :expires_in   900}})))))
 
-(defn token-handler [{:keys [body-params] :as request}]
-  (case (:grant_type body-params)
-    "authorization_code"
-    (exchange-code body-params)
+(defn token-handler [{:keys [body-params db config] :as request}]
+  (let [secret (get-in config [:jwt :secret])]
+    (case (:grant_type body-params)
+      "authorization_code"
+      (exchange-code db secret body-params)
 
-    "refresh_token"
-    (let [token-val    (get-in (:cookies request) ["refresh_token" :value])
-          stored-token (mc/find-one-as-map (db/get-db) "refresh_tokens"
-                                           {:token token-val :revoked false})]
-      (if (or (nil? stored-token)
-              (.before ^Date (:expires_at stored-token) (Date.)))
-        {:status 401 :body {:error "invalid refresh token"}}
-        (let [user         (mc/find-one-as-map (db/get-db) "users" {:_id (:user_id stored-token)})
-              access-token (jwt/sign {:sub   (str (:_id user))
-                                      :login (:login user)
-                                      :email (:email user)
-                                      :exp   (Date. (+ (System/currentTimeMillis) (* 15 60 1000)))}
-                                     (jwt-secret))]
-          {:status 200
-           :body   {:access_token access-token
-                    :token_type   "Bearer"
-                    :expires_in   900}})))
+      "refresh_token"
+      (let [token-val    (get-in (:cookies request) ["refresh_token" :value])
+            stored-token (mc/find-one-as-map db "refresh_tokens"
+                                             {:token token-val :revoked false})]
+        (if (or (nil? stored-token)
+                (.before ^Date (:expires_at stored-token) (Date.)))
+          {:status 401 :body {:error "invalid refresh token"}}
+          (let [user         (mc/find-one-as-map db "users" {:_id (:user_id stored-token)})
+                access-token (jwt/sign {:sub   (str (:_id user))
+                                        :login (:login user)
+                                        :email (:email user)
+                                        :exp   (Date. (+ (System/currentTimeMillis) (* 15 60 1000)))}
+                                       secret)]
+            {:status 200
+             :body   {:access_token access-token
+                      :token_type   "Bearer"
+                      :expires_in   900}})))
 
-    {:status 400 :body {:error "unsupported grant_type"}}))
+      {:status 400 :body {:error "unsupported grant_type"}})))
 
-(defn revoke-handler [{:keys [body-params cookies]}]
+(defn revoke-handler [{:keys [body-params cookies db]}]
   (let [token (or (:token body-params)
                   (get-in cookies ["refresh_token" :value]))]
-    (mc/update (db/get-db) "refresh_tokens" {:token token} {$set {:revoked true}})
+    (mc/update db "refresh_tokens" {:token token} {$set {:revoked true}})
     {:status  200
      :headers {"Set-Cookie" "refresh_token=; HttpOnly; SameSite=Strict; Path=/oauth; Max-Age=0"}
      :body    {:revoked true}}))
 
 (defn- verify-access-token [request]
   (let [auth-header (get-in request [:headers "authorization"] "")
-        token       (second (str/split auth-header #" " 2))]
+        token       (second (str/split auth-header #" " 2))
+        secret      (get-in request [:config :jwt :secret])]
     (when (seq token)
       (try
-        (jwt/unsign token (jwt-secret))
+        (jwt/unsign token secret)
         (catch Exception _ nil)))))
 
-(defn userinfo-handler [request]
+(defn userinfo-handler [{:keys [db] :as request}]
   (let [claims (verify-access-token request)]
     (if (nil? claims)
       {:status 401 :body {:error "invalid or missing token"}}
-      (let [user (mc/find-one-as-map (db/get-db) "users"
-                                     {:_id (ObjectId. (:sub claims))})]
+      (let [user (mc/find-one-as-map db "users" {:_id (ObjectId. (:sub claims))})]
         {:status 200
          :body   {:sub   (:sub claims)
                   :login (:login user)

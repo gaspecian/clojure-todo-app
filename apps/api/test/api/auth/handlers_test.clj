@@ -2,23 +2,27 @@
   (:require [clojure.test :refer [deftest is testing use-fixtures]]
             [ring.mock.request :as mock]
             [cheshire.core :as json]
-            [api.core :refer [app]]
+            [api.test-helpers :as helpers]
             [api.auth.handlers :refer [login-handler]]
-            [api.db.core :as db]
             [monger.collection :as mc])
   (:import [org.bson.types ObjectId]))
 
+(def system (helpers/make-test-system))
+(def app (:app system))
+(def test-db (:db system))
+
 (defn db-fixture [f]
-  (db/connect!)
-  (doseq [coll ["users" "auth_codes" "clients"]] (mc/drop (db/get-db) coll))
-  (mc/ensure-index (db/get-db) "users" (array-map :email 1) {:unique true})
-  (mc/ensure-index (db/get-db) "users" (array-map :login 1) {:unique true})
-  (mc/insert (db/get-db) "clients"
+  (doseq [coll ["users" "auth_codes" "clients"]] (mc/drop test-db coll))
+  ;; dropping "users" drops its unique indexes too — re-create them so the
+  ;; duplicate-email test still gets a 409.
+  (mc/ensure-index test-db "users" (array-map :email 1) {:unique true})
+  (mc/ensure-index test-db "users" (array-map :login 1) {:unique true})
+  (mc/insert test-db "clients"
              {:_id           (ObjectId.)
               :client_id     "react-app"
               :redirect_uris ["http://localhost:5173/callback"]})
   (f)
-  (doseq [coll ["users" "auth_codes" "clients"]] (mc/drop (db/get-db) coll)))
+  (doseq [coll ["users" "auth_codes" "clients"]] (mc/drop test-db coll)))
 
 (use-fixtures :each db-fixture)
 
@@ -70,7 +74,8 @@
                        {:name "Gabriel" :login "gspecian"
                         :email "g@example.com" :password "secret123"}))
     ;; OAuth params now arrive as form fields (carried from the authorize redirect)
-    (let [request  {:form-params {"email"          "g@example.com"
+    (let [request  {:db test-db
+                    :form-params {"email"          "g@example.com"
                                   "password"       "secret123"
                                   "client_id"      "react-app"
                                   "redirect_uri"   "http://localhost:5173/callback"
@@ -88,7 +93,8 @@
                        {:name "Gabriel" :login "gspecian"
                         :email "g@example.com" :password "secret123"}))
     (let [response (login-handler
-                    {:form-params {"email"          "g@example.com"
+                    {:db test-db
+                     :form-params {"email"          "g@example.com"
                                    "password"       "secret123"
                                    "client_id"      "react-app"
                                    "redirect_uri"   "http://evil.example.com/steal"
