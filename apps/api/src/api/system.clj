@@ -11,7 +11,10 @@
             [api.auth.handlers :as auth]
             [api.oauth.handlers :as oauth]
             [api.todos.handlers :as todos]
-            [api.middleware.auth :refer [wrap-auth]]))
+            [api.middleware.auth :refer [wrap-auth]]
+            [reitit.coercion.malli]
+            [reitit.ring.coercion :as rrc]
+            [api.middleware.coercion :refer [wrap-coercion-errors]]))
 
 (def routes
   [["/health"                                 {:get (fn [_] {:status 200 :body {:status "ok"}})}]
@@ -41,7 +44,10 @@
   (-> (ring/ring-handler
        (ring/router routes
                     {:data {:muuntaja   m/instance
-                            :middleware [muuntaja/format-middleware]}})
+                            :coercion   reitit.coercion.malli/coercion
+                            :middleware [muuntaja/format-middleware
+                                         wrap-coercion-errors
+                                         rrc/coerce-request-middleware]}})
        (ring/create-default-handler))
       (wrap-deps db config)
       (wrap-cookies)
