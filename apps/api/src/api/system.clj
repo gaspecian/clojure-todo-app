@@ -32,10 +32,12 @@
     {:middleware [wrap-auth]}
     ["/todos"
      {:get  todos/list-handler
-      :post todos/create-handler}]
+      :post {:parameters {:body schemas/NewTodo}
+             :handler     todos/create-handler}}]
     ["/todos/:id"
      {:get    todos/get-handler
-      :put    todos/update-handler
+      :put    {:parameters {:body schemas/UpdateTodo}
+               :handler     todos/update-handler}
       :delete todos/delete-handler}]]])
 
 (defn wrap-deps [handler db config]
