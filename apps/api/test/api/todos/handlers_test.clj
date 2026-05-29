@@ -88,6 +88,30 @@
           del-resp    (app (auth-request :delete (str "/api/todos/" todo-id) token))]
       (is (= 204 (:status del-resp))))))
 
+(deftest create-todo-invalid-priority-test
+  (testing "POST /api/todos with a priority outside the enum returns 400"
+    (let [token    (make-token test-user-id)
+          response (app (auth-request :post "/api/todos" token
+                                      {:title "x" :priority "urgent"}))]
+      (is (= 400 (:status response)))
+      (is (string? (:error (parse-body response)))))))
+
+(deftest create-todo-defaults-priority-test
+  (testing "POST /api/todos without priority defaults to medium"
+    (let [token    (make-token test-user-id)
+          response (app (auth-request :post "/api/todos" token {:title "no priority"}))
+          body     (parse-body response)]
+      (is (= 201 (:status response)))
+      (is (= "medium" (:priority body))))))
+
+(deftest update-todo-empty-title-test
+  (testing "PUT /api/todos/:id with an empty title returns 400"
+    (let [token       (make-token test-user-id)
+          create-resp (app (auth-request :post "/api/todos" token {:title "Task"}))
+          todo-id     (:id (parse-body create-resp))
+          update-resp (app (auth-request :put (str "/api/todos/" todo-id) token {:title ""}))]
+      (is (= 400 (:status update-resp))))))
+
 (deftest unauthorized-test
   (testing "GET /api/todos without token returns 401"
     (let [response (app (mock/request :get "/api/todos"))]

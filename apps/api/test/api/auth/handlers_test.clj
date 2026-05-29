@@ -102,6 +102,14 @@
                                    "state"          "xyz"}})]
       (is (= 400 (:status response))))))
 
+(deftest signup-short-password-test
+  (testing "POST /auth/signup with a password under 6 chars returns 400"
+    (let [response (app (json-request :post "/auth/signup"
+                                      {:name "Gabriel" :login "gspecian"
+                                       :email "g@example.com" :password "short"}))]
+      (is (= 400 (:status response)))
+      (is (string? (:error (parse-body response)))))))
+
 (deftest login-wrong-password-test
   (testing "POST /auth/login with wrong password returns 401"
     (app (json-request :post "/auth/signup"

@@ -11,12 +11,17 @@
             [api.auth.handlers :as auth]
             [api.oauth.handlers :as oauth]
             [api.todos.handlers :as todos]
-            [api.middleware.auth :refer [wrap-auth]]))
+            [api.middleware.auth :refer [wrap-auth]]
+            [api.schemas :as schemas]
+            [reitit.coercion.malli]
+            [reitit.ring.coercion :as rrc]
+            [api.middleware.coercion :refer [wrap-coercion-errors]]))
 
 (def routes
   [["/health"                                 {:get (fn [_] {:status 200 :body {:status "ok"}})}]
    ["/.well-known/oauth-authorization-server" {:get oauth/metadata-handler}]
-   ["/auth/signup"                            {:post auth/signup-handler}]
+   ["/auth/signup"                            {:post {:parameters {:body schemas/Signup}
+                                                      :handler     auth/signup-handler}}]
    ["/auth/login"                             {:get  auth/login-page-handler
                                                :post auth/login-handler}]
    ["/oauth/authorize"                        {:get oauth/authorize-handler}]
@@ -27,10 +32,12 @@
     {:middleware [wrap-auth]}
     ["/todos"
      {:get  todos/list-handler
-      :post todos/create-handler}]
+      :post {:parameters {:body schemas/NewTodo}
+             :handler     todos/create-handler}}]
     ["/todos/:id"
      {:get    todos/get-handler
-      :put    todos/update-handler
+      :put    {:parameters {:body schemas/UpdateTodo}
+               :handler     todos/update-handler}
       :delete todos/delete-handler}]]])
 
 (defn wrap-deps [handler db config]
@@ -41,7 +48,10 @@
   (-> (ring/ring-handler
        (ring/router routes
                     {:data {:muuntaja   m/instance
-                            :middleware [muuntaja/format-middleware]}})
+                            :coercion   reitit.coercion.malli/coercion
+                            :middleware [muuntaja/format-middleware
+                                         wrap-coercion-errors
+                                         rrc/coerce-request-middleware]}})
        (ring/create-default-handler))
       (wrap-deps db config)
       (wrap-cookies)

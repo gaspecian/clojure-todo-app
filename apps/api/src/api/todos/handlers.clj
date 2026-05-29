@@ -20,23 +20,22 @@
     {:status 200
      :body   {:todos (mapv todo->response todos)}}))
 
-(defn create-handler [{:keys [user-id db body-params]}]
-  (if (not (seq (:title body-params)))
-    {:status 400 :body {:error "title is required"}}
-    (let [now  (Date.)
-          todo {:_id        (ObjectId.)
-                :user_id    user-id
-                :title      (:title body-params)
-                :body       (:body body-params "")
-                :completed  false
-                :priority   (:priority body-params "medium")
-                :due_date   nil
-                :tags       (vec (:tags body-params []))
-                :created_at now
-                :updated_at now}]
-      (mc/insert db "todos" todo)
-      {:status 201
-       :body   (todo->response todo)})))
+(defn create-handler [{:keys [user-id db parameters]}]
+  (let [data (:body parameters)
+        now  (Date.)
+        todo {:_id        (ObjectId.)
+              :user_id    user-id
+              :title      (:title data)
+              :body       (:body data "")
+              :completed  false
+              :priority   (:priority data "medium")
+              :due_date   nil
+              :tags       (vec (:tags data []))
+              :created_at now
+              :updated_at now}]
+    (mc/insert db "todos" todo)
+    {:status 201
+     :body   (todo->response todo)}))
 
 (defn get-handler [{:keys [user-id db path-params]}]
   (let [todo (mc/find-one-as-map db "todos"
@@ -46,18 +45,18 @@
       {:status 404 :body {:error "todo not found"}}
       {:status 200 :body (todo->response todo)})))
 
-(defn update-handler [{:keys [user-id db path-params body-params]}]
+(defn update-handler [{:keys [user-id db path-params parameters]}]
   (let [id   (ObjectId. (:id path-params))
+        data (:body parameters)
         todo (mc/find-one-as-map db "todos" {:_id id :user_id user-id})]
     (if (nil? todo)
       {:status 404 :body {:error "todo not found"}}
       (let [updates (cond-> {:updated_at (Date.)}
-                      (contains? body-params :title)     (assoc :title (:title body-params))
-                      (contains? body-params :body)      (assoc :body (:body body-params))
-                      (contains? body-params :completed) (assoc :completed (:completed body-params))
-                      (contains? body-params :priority)  (assoc :priority (:priority body-params))
-                      (contains? body-params :due_date)  (assoc :due_date (:due_date body-params))
-                      (contains? body-params :tags)      (assoc :tags (vec (:tags body-params))))]
+                      (contains? data :title)     (assoc :title (:title data))
+                      (contains? data :body)      (assoc :body (:body data))
+                      (contains? data :completed) (assoc :completed (:completed data))
+                      (contains? data :priority)  (assoc :priority (:priority data))
+                      (contains? data :tags)      (assoc :tags (vec (:tags data))))]
         (mc/update db "todos" {:_id id} {$set updates})
         {:status 200
          :body   (todo->response (merge todo updates))}))))
