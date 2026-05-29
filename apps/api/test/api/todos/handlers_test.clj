@@ -3,6 +3,8 @@
             [ring.mock.request :as mock]
             [cheshire.core :as json]
             [buddy.sign.jwt :as jwt]
+            [aero.core :refer [read-config]]
+            [clojure.java.io :as io]
             [api.core :refer [app]]
             [api.db.core :as db]
             [monger.collection :as mc])
@@ -10,7 +12,9 @@
            [java.util Date]))
 
 (def test-user-id (ObjectId.))
-(def jwt-secret "dev-secret-do-not-use-in-production")
+;; Sign tokens with the same secret the app verifies against (env or default),
+;; so the suite passes whether or not JWT_SECRET is set (e.g. in CI).
+(def jwt-secret (get-in (read-config (io/resource "config.edn")) [:jwt :secret]))
 
 (defn make-token [user-id]
   (jwt/sign {:sub (str user-id)
