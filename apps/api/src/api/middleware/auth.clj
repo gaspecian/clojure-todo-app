@@ -10,8 +10,9 @@
           secret      (get-in request [:config :jwt :secret])]
       (if (empty? token)
         {:status 401 :body {:error "missing authorization header"}}
-        (try
-          (let [claims (jwt/unsign token secret)]
-            (handler (assoc request :user-id (ObjectId. (:sub claims)))))
-          (catch Exception _
-            {:status 401 :body {:error "invalid or expired token"}}))))))
+        (let [claims (try
+                       (jwt/unsign token secret)
+                       (catch Exception _ nil))]
+          (if (nil? claims)
+            {:status 401 :body {:error "invalid or expired token"}}
+            (handler (assoc request :user-id (ObjectId. (:sub claims))))))))))
